@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow"><title>FPV-курс · Victory Drones</title>
+<link rel="icon" href="v1/img/brand/favicon.ico">
+<script>
+(function () {
+  var pinned = null; try { pinned = (JSON.parse(localStorage.getItem('vdc.settings')) || {}).pinned; } catch (e) {}
+  fetch('versions.json', { cache: 'no-store' }).then(function (r) { return r.json(); })
+    .then(function (j) { location.replace((pinned || j.latest) + '/' + location.hash); })
+    .catch(function () { location.replace('v1/' + location.hash); });
+})();
+</script></head><body></body></html>
