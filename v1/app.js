@@ -88,6 +88,7 @@ var APP = (function () {
   function setTop(showBack, showMode) { back.hidden = !showBack; hmode.hidden = !showMode; }
 
   function home() {
+    if (window.OFFLINE && OFFLINE.firstRun()) return;
     setTop(false, false);
     var all = [], done = 0;
     modules().forEach(function (m) { m.lessons.forEach(function (l) { all.push(l); if (lessonDone(l)) done++; }); });
@@ -99,7 +100,7 @@ var APP = (function () {
       '<p>Кожен урок можна <b>дивитися</b> як відео або <b>читати</b> як текст із малюнками й анімаціями. Після уроку — питання для закріплення, наприкінці модуля — тест.</p>' +
       '<div class="pbar"><i style="width:' + (all.length ? Math.round(done / all.length * 100) : 0) + '%"></i></div>' +
       '<div class="stat"><div><b>' + done + ' / ' + all.length + '</b><span>уроків пройдено</span></div><div><b>' + mPassed + ' / ' + mods.length + '</b><span>' + plural(mods.length, 'модуль', 'модулі', 'модулів') + ' складено</span></div></div>' +
-      '</section>' + installCard();
+      '</section>' + offlineLink();
     PARTS.forEach(function (p) {
       var avl = p.lessons.filter(avail), dn = avl.filter(lessonDone).length;
       html += '<section class="part"><div class="part-h"><h3>' + (p.kind === 'module' ? 'Модуль ' + p.n + '. ' : '') + esc(p.title) + '</h3><span>' + (p.lessons.length ? dn + ' / ' + p.lessons.length : '') + '</span></div><div class="lessons">';
@@ -143,9 +144,9 @@ var APP = (function () {
     var hint = $('#modehint');
     if (hint) hint.textContent = mode === 'video' ? 'Відео' + (l.minutes ? ', ' + l.minutes + ' хв' : '') + '. Перемкнути на текстову версію — «Читати» вгорі.' : 'Текстова версія уроку з малюнками й анімаціями.' + (videoReady(l) ? ' Будь-яку частину можна переглянути у відео — кнопка «▶ у відео».' : '');
     if (mode === 'video') {
-      var src = l.video ? VIDEO_BASE + l.video : null;
+      var src = l.video ? (window.OFFLINE ? OFFLINE.src(l) : VIDEO_BASE + l.video) : null;
       pane.innerHTML =
-        '<div class="player">' + (!videoReady(l) ? '<div class="novideo"><div><b>Відео додається</b>Поки що пройдіть урок у режимі «Читати».</div></div>' : '<video id="vid" controls playsinline preload="metadata"' + (l.poster ? ' poster="' + img(l.poster) + '"' : '') + ((window.COURSE_HLS || []).indexOf(l.video.replace(/\.mp4$/, '')) >= 0 ? '' : ' src="' + src + '"') + '></video>') + '</div>' +
+        '<div class="player">' + (!videoReady(l) ? '<div class="novideo"><div><b>Відео додається</b>Поки що пройдіть урок у режимі «Читати».</div></div>' : !navigator.onLine && !(window.OFFLINE && OFFLINE.has(l)) ? '<div class="novideo"><div><b>Немає інтернету</b>Це відео не завантажене на пристрій. Пройдіть урок у режимі «Читати» або <a href="#offline">завантажте відео</a>, коли буде зв’язок.</div></div>' : '<video id="vid" controls playsinline preload="metadata"' + (l.poster ? ' poster="' + img(l.poster) + '"' : '') + ((window.COURSE_HLS || []).indexOf(l.video.replace(/\.mp4$/, '')) >= 0 ? '' : ' src="' + src + '"') + '></video>') + '</div>' +
         '<div class="chapters">' + (l.chapters || []).map(function (c) { return '<button class="chap" type="button" data-seek="' + c[0] + '"><span class="t">' + mmss(c[0]) + '</span><b>' + c[1] + '</b></button>'; }).join('') + '</div>' +
         endBlock(l);
       var v = $('#vid'), chaps = $$('.chap');
@@ -413,6 +414,7 @@ var APP = (function () {
       '<div class="set"><h3>Тема</h3><div class="seg">' + [['auto', 'Як у системі'], ['light', 'Світла'], ['dark', 'Темна']].map(function (x) { return '<button type="button" data-th="' + x[0] + '" aria-pressed="' + (th === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div></div>' +
       (window.BACKEND && BACKEND.enabled ? '' : '<div class="set"><h3>Режим перевірки</h3><p class="small muted" style="margin:0">Відкриває всі уроки й тести без проходження попередніх. Для авторів курсу.</p><button class="tog" type="button" id="pv" aria-pressed="' + !!S.preview + '">' + (S.preview ? 'Увімкнено' : 'Вимкнено') + '</button></div>' +
       '<div class="set"><h3>Скинути поступ</h3><p class="small muted" style="margin:0">Видалить результати на цьому пристрої (демо-режим).</p><button class="btn quiet" type="button" id="reset">Скинути</button></div>') +
+      '<div class="set"><h3>Навчання без інтернету</h3><p class="small muted" style="margin:0">Встановити курс як застосунок, завантажити або видалити відео модулів.</p><a class="btn quiet" href="#offline" style="align-self:flex-start">Відкрити</a></div>' +
       (window.BACKEND && BACKEND.enabled ? BACKEND.settingsHtml() : '') +
       '<p class="small muted" style="margin-top:18px">Версія ' + VERSION_LABEL + '.</p>';
     if (window.BACKEND && BACKEND.enabled) BACKEND.bindSettings();
@@ -436,6 +438,7 @@ var APP = (function () {
       if (parts[0] === 'admin' && BACKEND.isAdmin) { setTop(true, false); return BACKEND.adminView(parts.slice(1)); }
     }
     if (parts[0] === 'options') return settings();
+    if (parts[0] === 'offline' && window.OFFLINE) return OFFLINE.show();
     if (parts[0] === 'l' && l && isOpen(l)) return lesson(l);
     if (parts[0] === 'q' && l && isOpen(l)) return lessonQuiz(l);
     if (parts[0] === 't' && m && m.kind === 'module') return testIntro(m);
@@ -445,23 +448,24 @@ var APP = (function () {
   var installEvt = null;
   window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; var b = $('#instbtn'); if (b) b.hidden = false; });
   function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
-  function installCard() {
-    if (standalone()) return '';
+  function installSteps() {
     var ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1), android = /Android/.test(ua);
-    var IC = '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 8v7M9 12l3 3 3-3"/></svg>';
     var blocks = [
-      ['android', 'Android (Chrome)', '<ol><li>Відкрийте курс у <b>Chrome</b>.</li><li>Натисніть <b>⋮</b> у правому верхньому куті.</li><li>Оберіть <b>«Встановити застосунок»</b> або <b>«Додати на головний екран»</b>.</li><li>Підтвердіть — на екрані з’явиться значок <b>FPV-інженерія</b>.</li></ol>'],
+      ['android', 'Android (Chrome)', '<ol><li>Відкрийте курс у <b>Chrome</b>.</li><li>Натисніть <b>⋮</b> у правому верхньому куті.</li><li>Оберіть <b>«Встановити застосунок»</b> або <b>«Додати на головний екран»</b>.</li><li>Підтвердіть — на екрані з’явиться значок <b>FPV-інженерія</b>. Далі відкривайте курс з нього.</li></ol>'],
       ['ios', 'iPhone / iPad (Safari)', '<ol><li>Відкрийте курс саме в <b>Safari</b>.</li><li>Натисніть кнопку <b>«Поділитися»</b> (квадрат зі стрілкою вгору).</li><li>Прокрутіть і оберіть <b>«На початковий екран»</b>, потім <b>«Додати»</b>.</li><li>Запустіть курс зі значка і <b>увійдіть ще раз</b> своїм нікнеймом і паролем: на iPhone застосунок не бачить входу з Safari.</li></ol>'],
       ['pc', 'Комп’ютер (Chrome або Edge)', '<ol><li>Відкрийте курс у Chrome або Edge.</li><li>Натисніть значок <b>встановлення</b> праворуч в адресному рядку (монітор зі стрілкою) або меню <b>⋮ → «Встановити…»</b>.</li></ol>']
     ];
     var first = ios ? 'ios' : android ? 'android' : 'pc';
     blocks.sort(function (a, b) { return (b[0] === first) - (a[0] === first); });
-    return '<details class="set install"><summary><span class="ii">' + IC + '</span><span><b>Встановити курс як застосунок</b><span class="small muted">Значок на екрані телефона і навчання без інтернету</span></span></summary>' +
-      '<button class="btn" id="instbtn" type="button"' + (installEvt ? '' : ' hidden') + '>Встановити зараз</button>' +
-      blocks.map(function (b, i) { return '<div class="ib' + (i ? ' other' : '') + '"><h4>' + b[1] + '</h4>' + b[2] + '</div>'; }).join('') +
-      '<div class="ib"><h4>Що працює без інтернету</h4><ul class="ok"><li>Текстові уроки, малюнки й анімації</li><li>Питання після уроків — поступ збережеться на пристрої і надішлеться, щойно з’явиться зв’язок</li></ul>' +
-      '<h4>Потрібен інтернет</h4><ul class="no"><li>Відео уроків</li><li>Підсумкові тести модулів (спроби рахуються на сервері)</li><li>Перший вхід і панель адміністратора</li></ul>' +
-      '<p class="small muted" style="margin:0">Після встановлення <b>один раз відкрийте курс з інтернетом</b> — він збереже уроки на пристрої. Оновлення курсу завантажуються автоматично, коли ви онлайн.</p></div></details>';
+    return '<button class="btn" id="instbtn" type="button"' + (installEvt ? '' : ' hidden') + '>Встановити зараз</button>' +
+      blocks.map(function (b, i) { return i ? '<details class="ib other"><summary>' + b[1] + '</summary>' + b[2] + '</details>' : '<div class="ib"><h4>' + b[1] + '</h4>' + b[2] + '</div>'; }).join('') +
+      '<p class="small muted" style="margin:0">Після встановлення один раз відкрийте курс з інтернетом — він збереже уроки на пристрої.</p>';
+  }
+  function offlineLink() {
+    var n = window.OFFLINE ? OFFLINE.count() : 0, inst = window.OFFLINE && OFFLINE.standalone();
+    var IC = '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 7v7M9 11l3 3 3-3M9.5 18h5"/></svg>';
+    return '<a class="offlink" href="#offline"><span class="ii">' + IC + '</span><span><b>Навчання без інтернету</b><span>' +
+      (inst ? (n ? 'На пристрої ' + n + ' відео. Завантажити ще або видалити' : 'Завантажити відео модулів на телефон') : 'Встановити курс як застосунок і завантажити відео') + '</span></span><span class="go" aria-hidden="true">→</span></a>';
   }
   function bindInstall() {
     var b = $('#instbtn'); if (!b) return;
@@ -471,6 +475,7 @@ var APP = (function () {
 
   function start() {
     view = $('#view'); back = $('#back'); hmode = $('#hmode');
+    if (window.OFFLINE) OFFLINE.init(api);
     applyTheme();
     window.addEventListener('hashchange', route);
     back.onclick = function () {
@@ -502,7 +507,8 @@ var APP = (function () {
   var api = {
     getP: function () { return P; }, setP: function (v) { P = v; P.les = P.les || {}; P.q = P.q || {}; P.tests = P.tests || {}; save('vdc.progress', P); },
     view: function () { return view; }, setTop: setTop, esc: esc, toast: toast, route: route, $: $, $$: $$, plural: plural,
-    modules: modules, lessons: function () { return LES; }, PASS_RATE: PASS_RATE, lessonDone: lessonDone
+    modules: modules, lessons: function () { return LES; }, PASS_RATE: PASS_RATE, lessonDone: lessonDone,
+    parts: function () { return PARTS; }, installSteps: installSteps, bindInstall: bindInstall
   };
   return { part: part, start: start, ANIMS: ANIMS, photo: photo, gallery: gallery, anim: anim, img: img, esc: esc };
 })();

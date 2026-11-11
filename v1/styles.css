@@ -388,3 +388,33 @@ tr.muted td { color: var(--muted) }
 .install #instbtn { align-self: flex-start }
 .gallery figure:last-child:nth-child(odd) { grid-column: 1 / -1 }
 .gallery figure:last-child:nth-child(odd) img { aspect-ratio: 2 / 1 }
+
+/* offline: home link + download screen */
+.offlink { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line); color: var(--ink); text-decoration: none }
+.offlink:hover { border-color: var(--hi) }
+.offlink > span:nth-child(2) { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 13.5px; color: var(--muted) }
+.offlink b { color: var(--ink); font-size: 15px }
+.offlink .go { color: var(--hi-ink); font-size: 20px }
+.offlink .ii, .offok .ii { width: 40px; height: 40px; border-radius: 12px; background: var(--hi-soft); display: grid; place-items: center; flex: none }
+.offlink .ii svg { width: 22px; height: 22px; fill: none; stroke: var(--hi-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round }
+.set .ib { background: var(--sunk); border-radius: 12px; padding: 10px 14px; font-size: 14.5px }
+.set .ib h4 { margin: 2px 0 6px; font-size: 14px }
+.set .ib ol { margin: 0; padding-left: 20px } .set .ib li { margin: 3px 0 }
+.set details.ib summary { cursor: pointer; font-weight: 600; font-size: 14px }
+.set details.ib[open] summary { margin-bottom: 6px }
+.warnline { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--gold-soft); font-size: 14px }
+.offok { flex-direction: column; gap: 2px; border-color: var(--ok) }
+.offok b { color: var(--ok) }
+.seg.q2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px }
+.seg.q2 button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--bg); cursor: pointer; text-align: left }
+.seg.q2 button span { font-size: 12.5px; color: var(--muted) }
+.seg.q2 button[aria-pressed="true"] { border-color: var(--hi); background: var(--hi-soft) }
+.dlrow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 0; border-top: 1px solid var(--line) }
+.dlrow.main .dlinfo b { font-size: 16px }
+.dlinfo { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 200px; align-items: flex-start }
+.dlinfo > span:not(.chip) { font-size: 13.5px; color: var(--muted) }
+.dlbtn { display: flex; gap: 8px; flex-wrap: wrap }
+.dljob { border-color: var(--hi) }
+ul.okl, ul.nol { margin: 0; padding-left: 20px; font-size: 14.5px }
+ul.okl li::marker { content: "✓  "; color: var(--ok) }
+.novideo a { color: inherit; text-decoration: underline }
