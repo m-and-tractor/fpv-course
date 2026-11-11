@@ -327,3 +327,42 @@ textarea.open { width: 100%; min-height: 110px; font: inherit; padding: 12px 14p
 .arow a { color: var(--ink); text-decoration: none }
 .mail { font: 500 13.5px var(--mono); background: var(--sunk); border-radius: 10px; padding: 9px 11px; user-select: all; overflow-wrap: anywhere }
 tr.muted td { color: var(--muted) }
+
+/* admin statistics */
+.statlink { flex-direction: row; align-items: center; justify-content: space-between; text-decoration: none; color: var(--ink) }
+.statlink > span:first-child { display: flex; flex-direction: column; gap: 2px }
+.statlink > span:last-child { font-size: 22px; color: var(--hi-ink) }
+.filters { display: flex; gap: 10px; flex-wrap: wrap; margin: 6px 0 12px }
+.filters .fld { flex: 1 1 200px }
+.fld select { font: 500 16px var(--sans); padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); width: 100% }
+.tools.kpi { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) }
+.chart .ch-h h3 { margin: 0; font-size: 16px; line-height: 1.3 }
+.chart .ch-h p { margin: 4px 0 0 }
+.plot { width: 100%; min-width: 0 }
+.plot svg { display: block; overflow: visible }
+.plot.split { display: flex; gap: 20px; align-items: center; flex-wrap: wrap }
+.plot.split .side { flex: 1 1 220px; min-width: 0 }
+.plot .ax { font: 500 12px var(--sans); fill: var(--muted) }
+.plot .ax.strong { fill: var(--ink); font-weight: 600 }
+.plot .big { font: 700 24px var(--display); fill: var(--ink) }
+.plot .grid { stroke: var(--line); stroke-width: 1 }
+.plot .base { stroke: var(--muted); stroke-width: 1 }
+.plot .ref { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3 }
+.plot .track { fill: var(--sunk) }
+.plot .trackc { fill: none; stroke: var(--sunk) }
+.plot .hit { fill: transparent }
+.plot .hit:hover { fill: color-mix(in srgb, var(--ink) 5%, transparent) }
+.plot .ring { stroke: var(--surface); stroke-width: 2 }
+.plot .mk.dim { opacity: .45 }
+:root { --c1: #3a55c4; --c2: #0a8ea8; --c3: #c98a00 }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --c1: #8a7cf5; --c2: #1aa6bf; --c3: #bf8700 } }
+:root[data-theme="dark"] { --c1: #8a7cf5; --c2: #1aa6bf; --c3: #bf8700 }
+.mk.c1, .sw.c1 { fill: var(--c1); background: var(--c1) }
+.mk.c2, .sw.c2 { fill: var(--c2); background: var(--c2) }
+.mk.c3, .sw.c3 { fill: var(--c3); background: var(--c3) }
+.lgd { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px }
+.lgd span { display: inline-flex; align-items: center; gap: 6px }
+.lgd .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block }
+.tview summary { cursor: pointer; font-size: 13.5px; color: var(--hi-ink); font-weight: 600 }
+.tview .tbl { margin-top: 8px }
+.ctip { position: fixed; z-index: 50; pointer-events: none; background: var(--ink); color: var(--surface); font: 500 13px/1.45 var(--sans); padding: 7px 10px; border-radius: 8px; white-space: pre-line; max-width: 260px; box-shadow: 0 4px 16px rgba(0,0,0,.18) }

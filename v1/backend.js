@@ -241,6 +241,7 @@ var BACKEND = (function () {
   }
 
   B.adminView = function (parts) {
+    if (parts && parts[0] === 'stats') return STATS.show(A, sb, parts.slice(1).join('-'));
     if (parts && parts[0]) return groupView(parts.join('-'));
     view().innerHTML = '<p class="muted">Завантаження…</p>';
     Promise.all([
@@ -253,7 +254,8 @@ var BACKEND = (function () {
       (r[2].data || []).forEach(function (p) { prof[p.id] = p.nickname; });
       var gname = {}; groups.forEach(function (g) { gname[g.id] = g.name; });
       var pend = mem.filter(function (m) { return m.status === 'pending'; });
-      var html = '<h2 class="page">Панель адміністратора</h2>';
+      var html = '<h2 class="page">Панель адміністратора</h2>' +
+        '<a class="set statlink" href="#admin-stats"><span><b>Статистика навчання</b><span class="small muted">Поступ тиждень за тижнем, спроби тестів, відео чи текст</span></span><span aria-hidden="true">→</span></a>';
       if (pend.length) html += '<div class="set"><h3>Запити на приєднання понад ліміт (' + pend.length + ')</h3>' + pend.map(function (m) {
         return '<div class="arow"><span><b>' + esc(prof[m.user_id]) + '</b> → «' + esc(gname[m.group_id]) + '» <span class="muted small">' + fmtDate(m.created_at) + '</span></span><span class="row"><button class="btn" data-ok="' + m.user_id + '">Додати</button><button class="btn quiet" data-no="' + m.user_id + '">Відхилити</button></span></div>';
       }).join('') + '<p class="small muted" style="margin:0">«Додати» збільшує кількість місць у групі на одне.</p></div>';
@@ -355,7 +357,7 @@ var BACKEND = (function () {
         var html = '<div class="crumbs"><a href="#admin">Панель адміністратора</a></div><h2 class="page">' + esc(g.name) + '</h2>' +
           '<div class="tools"><div><b>' + active.length + ' / ' + g.seats + '</b><span>учнів у групі</span></div><div><b>' + avgDone + '%</b><span>середній поступ уроків</span></div>' +
           mods.map(function (md) { return '<div><b>' + passed[md.id] + ' / ' + active.length + '</b><span>склали тест модуля ' + md.n + '</span></div>'; }).join('') + '</div>' +
-          '<div class="row"><button class="btn quiet" type="button" id="csv">Завантажити CSV</button><button class="btn quiet" data-copy="' + esc(joinLink(g.invite_code)) + '">Копіювати посилання</button></div>' +
+          '<div class="row"><a class="btn quiet" href="#admin-stats-' + g.id + '">Статистика групи</a><button class="btn quiet" type="button" id="csv">Завантажити CSV</button><button class="btn quiet" data-copy="' + esc(joinLink(g.invite_code)) + '">Копіювати посилання</button></div>' +
           '<div class="tblwrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Нікнейм</th><th>Уроки</th><th>Питання</th>' + mods.map(function (md) { return '<th>Тест М' + md.n + '</th>'; }).join('') + '<th>Активність</th><th></th></tr></thead><tbody>' +
           rows.map(function (r) {
             var cells = mods.map(function (md) {
