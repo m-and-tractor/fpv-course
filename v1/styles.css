@@ -316,3 +316,14 @@ textarea.open { width: 100%; min-height: 110px; font: inherit; padding: 12px 14p
 .cmp b { display: block; margin-bottom: 4px }
 .cmp ul { margin: 0; padding-left: 18px }
 @media (max-width: 460px) { .cmp { grid-template-columns: 1fr } }
+
+/* accounts and admin */
+.fld { display: flex; flex-direction: column; gap: 4px; font-size: 14px; font-weight: 600; min-width: 0 }
+.fld input { font: 500 16px var(--sans); padding: 11px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink); width: 100% }
+.fld input:focus { border-color: var(--hi); outline: none }
+.ferr { color: var(--bad); font-size: 14px; margin: 0; min-height: 1.2em }
+.arow { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-bottom: 1px solid var(--line) }
+.arow:last-of-type { border-bottom: 0 }
+.arow a { color: var(--ink); text-decoration: none }
+.mail { font: 500 13.5px var(--mono); background: var(--sunk); border-radius: 10px; padding: 9px 11px; user-select: all; overflow-wrap: anywhere }
+tr.muted td { color: var(--muted) }

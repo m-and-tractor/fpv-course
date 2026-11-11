@@ -20,7 +20,7 @@ var APP = (function () {
   var P = load('vdc.progress', { les: {}, q: {}, tests: {} });        // see below
   P.les = P.les || {}; P.q = P.q || {}; P.tests = P.tests || {};
   function saveS() { save('vdc.settings', S); }
-  function saveP() { save('vdc.progress', P); }
+  function saveP() { save('vdc.progress', P); if (window.BACKEND && BACKEND.enabled) BACKEND.push(P); }
   // les[id] = { seen, quiz: {best, total, done, at} } · q[id] = { s, r, w } · tests[mod] = { attempts, best, total, passed, extra }
 
   // ---------- helpers ----------
@@ -61,7 +61,7 @@ var APP = (function () {
     return before.lessons.filter(avail).every(lessonDone);
   }
   function testOpen(m) { return S.preview || window.COURSE_REVIEW || m.lessons.filter(avail).every(lessonDone); }
-  function attemptsAllowed(m) { var t = tp(m.id); return 1 + RETAKES_DEFAULT + (t.extra || 0); }
+  function attemptsAllowed(m) { var t = tp(m.id); if (t.allowedSrv) return t.allowedSrv; return 1 + RETAKES_DEFAULT + (t.extra || 0); }
 
   // ---------- figures ----------
   function img(src) { return 'img/' + src + '.webp'; }
@@ -167,6 +167,7 @@ var APP = (function () {
         v.addEventListener('timeupdate', mark);
         v.addEventListener('timeupdate', function () { if (v.duration && v.currentTime > v.duration * 0.9) markSeen(l); });
         v.addEventListener('ended', function () { markSeen(l); });
+        trackVideo(l, v);
       }
       chaps.forEach(function (b) { b.onclick = function () { seek(+b.dataset.seek); }; });
       if (seekTo != null) seek(seekTo); else mark();
@@ -178,9 +179,10 @@ var APP = (function () {
         endBlock(l);
       $$('.jump', pane).forEach(function (b) { b.onclick = function () { S.mode = 'video'; saveS(); renderPane(l, 'video', +b.dataset.t); }; });
       mountAnims(pane);
+      trackRead(l);
       var sum = $('.summary', pane);
       if (sum && 'IntersectionObserver' in window) {
-        var io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { markSeen(l); io.disconnect(); } });
+        var io = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { markSeen(l); use(l).end = true; saveP(); io.disconnect(); } });
         io.observe(sum);
       } else if (!sum) markSeen(l);
     }
@@ -192,7 +194,26 @@ var APP = (function () {
     if (hls.indexOf(videoName(l)) >= 0) return true;
     return !list || list.indexOf(videoName(l)) >= 0;
   }
-  function markSeen(l) { var p = lp(l.id); if (!p.seen) { p.seen = true; saveP(); } }
+  function markSeen(l) { var p = lp(l.id); if (!p.seen) { p.seen = true; p.seenAt = Date.now(); saveP(); } }
+  // learning statistics (for the admin dashboard): time per tab, share of the video watched, text read to the end
+  function use(l) { P.use = P.use || {}; return P.use[l.id] || (P.use[l.id] = { v: 0, r: 0, vmax: 0, end: false }); }
+  var useDirty = 0;
+  function useSave(force) { if (useDirty && (force || useDirty >= 30)) { useDirty = 0; saveP(); } }
+  function trackRead(l) {
+    var id = setInterval(function () { if (document.visibilityState === 'visible') { use(l).r += 5; use(l).last = Date.now(); useDirty += 5; useSave(); } }, 5000);
+    live.push({ stop: function () { clearInterval(id); useSave(true); } });
+  }
+  function trackVideo(l, v) {
+    var prev = null;
+    v.addEventListener('timeupdate', function () {
+      var t = v.currentTime, u = use(l);
+      if (!v.paused && prev != null && t > prev && t - prev < 2) { u.v += t - prev; u.last = Date.now(); useDirty += t - prev; }
+      prev = t; if (v.duration) u.vmax = Math.max(u.vmax || 0, Math.round(t / v.duration * 100) / 100);
+      useSave();
+    });
+    v.addEventListener('seeking', function () { prev = null; });
+    live.push({ stop: function () { useSave(true); } });
+  }
   function endBlock(l) {
     var p = lp(l.id), q = l.quiz || [], next = nextLesson(l);
     if (!q.length) return '<div class="endcta">' + (next ? '<a class="btn wide" href="#l-' + next.id + '" data-seen="' + l.id + '">Далі: ' + esc(next.title) + '</a>' : '<a class="btn wide" href="#home" data-seen="' + l.id + '">До змісту курсу</a>') + '</div>';
@@ -329,8 +350,13 @@ var APP = (function () {
     var items = wsample(own, wOwn, nOwn).map(instance).concat(wsample(prior, wReview, nPrev).map(function (q) { var it = instance(q); it.review = LES[q.les].part.n; return it; }));
     return shuffle(items);
   }
-  function testIntro(m) {
+  function testIntro(m, fresh) {
     setTop(true, false);
+    if (window.BACKEND && BACKEND.enabled && !fresh) {          // attempts are counted on the server
+      view.innerHTML = '<p class="muted">Завантаження…</p>';
+      BACKEND.attempts(m.id).then(function (r) { var t = tp(m.id); t.attempts = r.used; t.allowedSrv = r.allowed; t.requested = r.requested; testIntro(m, true); }, function () { testIntro(m, true); });
+      return;
+    }
     var t = tp(m.id), allowed = attemptsAllowed(m), used = t.attempts || 0, left = allowed - used, open = testOpen(m);
     var own = 0; m.lessons.filter(avail).forEach(function (l) { own += (l.quiz || []).filter(function (q) { return !q.open; }).length; });
     var size = Math.min(TEST_SIZE, own), hasPrev = modules().indexOf(m) > 0;
@@ -349,13 +375,28 @@ var APP = (function () {
     else html += '<div class="row" style="margin-top:16px"><button class="btn hi" type="button" id="go">Почати тест</button><a class="btn quiet" href="#home">Пізніше</a></div>';
     view.innerHTML = html;
     var go = $('#go'); if (go) go.onclick = function () { startTest(m); };
-    var ask = $('#askmore'); if (ask) ask.onclick = function () { t.askMore = Date.now(); saveP(); toast('Запит надіслано адміністратору'); this.disabled = true; this.textContent = 'Запит надіслано'; };
+    var ask = $('#askmore');
+    if (ask && t.requested) { ask.disabled = true; ask.textContent = 'Запит надіслано'; }
+    if (ask) ask.onclick = function () { var b = this; t.askMore = Date.now(); saveP(); (window.BACKEND && BACKEND.enabled ? BACKEND.requestExtra(m.id) : Promise.resolve()).then(function () { toast('Запит надіслано адміністратору'); b.disabled = true; b.textContent = 'Запит надіслано'; }); };
   }
   function startTest(m) {
-    var t = tp(m.id); t.attempts = (t.attempts || 0) + 1; saveP();     // an attempt counts as soon as it starts
+    var t = tp(m.id);
+    if (window.BACKEND && BACKEND.enabled) {
+      BACKEND.startTest(m.id).then(function (r) {
+        t.attempts = r.used; t.allowedSrv = r.allowed; saveP();
+        if (!r.ok) return testIntro(m, true);
+        runTest(m, t, r.attempt);
+      }, function () { toast('Немає з’єднання з сервером. Спробуйте ще раз.'); });
+      return;
+    }
+    t.attempts = (t.attempts || 0) + 1; saveP();     // an attempt counts as soon as it starts
+    runTest(m, t, null);
+  }
+  function runTest(m, t, attemptId) {
     runQuiz({ title: 'Тест модуля ' + m.n, items: buildTest(m), noExplain: true, done: function (c) {
       var r = tally(c), pass = r.score / r.total >= PASS_RATE;
       t.best = Math.max(t.best || 0, r.score); t.total = r.total; if (pass) t.passed = true; t.last = { score: r.score, total: r.total, at: Date.now() }; saveP();
+      if (attemptId && window.BACKEND) BACKEND.finishTest(attemptId, r.score, r.total, PASS_RATE);
       var left = attemptsAllowed(m) - t.attempts;
       setTop(true, false);
       view.innerHTML = '<div class="crumbs">Тест модуля ' + m.n + '</div><div class="score ' + (pass ? 'result-ok' : 'result-bad') + '">' + Math.round(r.score / r.total * 100) + '%</div>' +
@@ -372,7 +413,9 @@ var APP = (function () {
       '<div class="set"><h3>Тема</h3><div class="seg">' + [['auto', 'Як у системі'], ['light', 'Світла'], ['dark', 'Темна']].map(function (x) { return '<button type="button" data-th="' + x[0] + '" aria-pressed="' + (th === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div></div>' +
       '<div class="set"><h3>Режим перевірки</h3><p class="small muted" style="margin:0">Відкриває всі уроки й тести без проходження попередніх. Для авторів курсу.</p><button class="tog" type="button" id="pv" aria-pressed="' + !!S.preview + '">' + (S.preview ? 'Увімкнено' : 'Вимкнено') + '</button></div>' +
       '<div class="set"><h3>Скинути поступ</h3><p class="small muted" style="margin:0">Видалить результати на цьому пристрої (демо-режим).</p><button class="btn quiet" type="button" id="reset">Скинути</button></div>' +
+      (window.BACKEND && BACKEND.enabled ? BACKEND.settingsHtml() : '') +
       '<p class="small muted" style="margin-top:18px">Версія ' + VERSION_LABEL + '.</p>';
+    if (window.BACKEND && BACKEND.enabled) BACKEND.bindSettings();
     $$('[data-th]').forEach(function (b) { b.onclick = function () { S.theme = b.dataset.th; saveS(); applyTheme(); settings(); }; });
     $('#pv').onclick = function () { S.preview = !S.preview; saveS(); settings(); };
     $('#reset').onclick = function () { if (this.dataset.sure) { P = { les: {}, q: {}, tests: {} }; saveP(); toast('Поступ скинуто'); location.hash = '#home'; } else { this.dataset.sure = 1; this.textContent = 'Так, скинути'; } };
@@ -384,6 +427,14 @@ var APP = (function () {
     stopAnims(); window.scrollTo(0, 0);
     var h = location.hash.replace(/^#/, '') || 'home', parts = h.split('-');
     var l = LES[parts[1]], m = PARTS.filter(function (x) { return x.id === parts[1]; })[0];
+    if (window.BACKEND && BACKEND.enabled) {                       // accounts: join / login / admin screens and the login gate
+      setTop(false, false);
+      if (parts[0] === 'join') return BACKEND.joinView(parts.slice(1).join('-'));
+      if (parts[0] === 'invite') return BACKEND.inviteView(parts.slice(1).join('-'));
+      if (!BACKEND.user) return BACKEND.loginView();
+      if (BACKEND.status !== 'active' && !BACKEND.isAdmin) return BACKEND.waitView();
+      if (parts[0] === 'admin' && BACKEND.isAdmin) { setTop(true, false); return BACKEND.adminView(parts.slice(1)); }
+    }
     if (parts[0] === 'options') return settings();
     if (parts[0] === 'l' && l && isOpen(l)) return lesson(l);
     if (parts[0] === 'q' && l && isOpen(l)) return lessonQuiz(l);
@@ -416,8 +467,14 @@ var APP = (function () {
       }
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { var lb = $('.lb'); if (lb) lb.remove(); } });
-    route();
+    if (window.BACKEND && BACKEND.enabled) BACKEND.init(api).then(route, route); else route();
   }
 
+  // what backend.js may use
+  var api = {
+    getP: function () { return P; }, setP: function (v) { P = v; P.les = P.les || {}; P.q = P.q || {}; P.tests = P.tests || {}; save('vdc.progress', P); },
+    view: function () { return view; }, setTop: setTop, esc: esc, toast: toast, route: route, $: $, $$: $$, plural: plural,
+    modules: modules, lessons: function () { return LES; }, PASS_RATE: PASS_RATE, lessonDone: lessonDone
+  };
   return { part: part, start: start, ANIMS: ANIMS, photo: photo, gallery: gallery, anim: anim, img: img, esc: esc };
 })();
