@@ -95,7 +95,7 @@ var APP = (function () {
     var html =
       '<section class="hero"><svg class="deco" viewBox="0 0 100 100"><g fill="none" stroke="#fff" stroke-width="5"><circle cx="22" cy="22" r="16"/><circle cx="78" cy="22" r="16"/><circle cx="22" cy="78" r="16"/><circle cx="78" cy="78" r="16"/><path d="M33 33l34 34M67 33L33 67"/><rect x="40" y="40" width="20" height="20" rx="4" fill="#fff"/></g></svg>' +
       '<div class="eyebrow">Онлайн-курс · Victory Drones × ARM Drones</div>' +
-      '<h2>Ударний FPV-коптер: будова, збирання, налаштування</h2>' +
+      '<h2>Інженерія FPV-дронів (база)</h2>' +
       '<p>Кожен урок можна <b>дивитися</b> як відео або <b>читати</b> як текст із малюнками й анімаціями. Після уроку — питання для закріплення, наприкінці модуля — тест.</p>' +
       '<div class="pbar"><i style="width:' + (all.length ? Math.round(done / all.length * 100) : 0) + '%"></i></div>' +
       '<div class="stat"><div><b>' + done + ' / ' + all.length + '</b><span>уроків пройдено</span></div><div><b>' + mPassed + ' / ' + mods.length + '</b><span>' + plural(mods.length, 'модуль', 'модулі', 'модулів') + ' складено</span></div></div>' +
