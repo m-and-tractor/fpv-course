@@ -99,7 +99,7 @@ var APP = (function () {
       '<p>Кожен урок можна <b>дивитися</b> як відео або <b>читати</b> як текст із малюнками й анімаціями. Після уроку — питання для закріплення, наприкінці модуля — тест.</p>' +
       '<div class="pbar"><i style="width:' + (all.length ? Math.round(done / all.length * 100) : 0) + '%"></i></div>' +
       '<div class="stat"><div><b>' + done + ' / ' + all.length + '</b><span>уроків пройдено</span></div><div><b>' + mPassed + ' / ' + mods.length + '</b><span>' + plural(mods.length, 'модуль', 'модулі', 'модулів') + ' складено</span></div></div>' +
-      '</section>';
+      '</section>' + installCard();
     PARTS.forEach(function (p) {
       var avl = p.lessons.filter(avail), dn = avl.filter(lessonDone).length;
       html += '<section class="part"><div class="part-h"><h3>' + (p.kind === 'module' ? 'Модуль ' + p.n + '. ' : '') + esc(p.title) + '</h3><span>' + (p.lessons.length ? dn + ' / ' + p.lessons.length : '') + '</span></div><div class="lessons">';
@@ -120,7 +120,7 @@ var APP = (function () {
     });
     html += '<div class="row" style="margin-top:26px"><a class="btn quiet" href="#options">Налаштування</a></div>' +
       '<div class="demo">Демо-режим: поступ зберігається лише в цьому браузері' + (window.COURSE_REVIEW ? '. Режим перевірки: усі уроки й тест відкриті' : '') + '</div>';
-    view.innerHTML = html;
+    view.innerHTML = html; bindInstall();
   }
 
   // ----- lesson -----
@@ -441,6 +441,34 @@ var APP = (function () {
     if (parts[0] === 't' && m && m.kind === 'module') return testIntro(m);
     home();
   }
+  // ---------- install as an app / offline ----------
+  var installEvt = null;
+  window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); installEvt = e; var b = $('#instbtn'); if (b) b.hidden = false; });
+  function standalone() { return (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; }
+  function installCard() {
+    if (standalone()) return '';
+    var ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1), android = /Android/.test(ua);
+    var IC = '<svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M12 8v7M9 12l3 3 3-3"/></svg>';
+    var blocks = [
+      ['android', 'Android (Chrome)', '<ol><li>Відкрийте курс у <b>Chrome</b>.</li><li>Натисніть <b>⋮</b> у правому верхньому куті.</li><li>Оберіть <b>«Встановити застосунок»</b> або <b>«Додати на головний екран»</b>.</li><li>Підтвердіть — на екрані з’явиться значок <b>FPV-інженерія</b>.</li></ol>'],
+      ['ios', 'iPhone / iPad (Safari)', '<ol><li>Відкрийте курс саме в <b>Safari</b>.</li><li>Натисніть кнопку <b>«Поділитися»</b> (квадрат зі стрілкою вгору).</li><li>Прокрутіть і оберіть <b>«На початковий екран»</b>, потім <b>«Додати»</b>.</li><li>Запустіть курс зі значка і <b>увійдіть ще раз</b> своїм нікнеймом і паролем: на iPhone застосунок не бачить входу з Safari.</li></ol>'],
+      ['pc', 'Комп’ютер (Chrome або Edge)', '<ol><li>Відкрийте курс у Chrome або Edge.</li><li>Натисніть значок <b>встановлення</b> праворуч в адресному рядку (монітор зі стрілкою) або меню <b>⋮ → «Встановити…»</b>.</li></ol>']
+    ];
+    var first = ios ? 'ios' : android ? 'android' : 'pc';
+    blocks.sort(function (a, b) { return (b[0] === first) - (a[0] === first); });
+    return '<details class="set install"><summary><span class="ii">' + IC + '</span><span><b>Встановити курс як застосунок</b><span class="small muted">Значок на екрані телефона і навчання без інтернету</span></span></summary>' +
+      '<button class="btn" id="instbtn" type="button"' + (installEvt ? '' : ' hidden') + '>Встановити зараз</button>' +
+      blocks.map(function (b, i) { return '<div class="ib' + (i ? ' other' : '') + '"><h4>' + b[1] + '</h4>' + b[2] + '</div>'; }).join('') +
+      '<div class="ib"><h4>Що працює без інтернету</h4><ul class="ok"><li>Текстові уроки, малюнки й анімації</li><li>Питання після уроків — поступ збережеться на пристрої і надішлеться, щойно з’явиться зв’язок</li></ul>' +
+      '<h4>Потрібен інтернет</h4><ul class="no"><li>Відео уроків</li><li>Підсумкові тести модулів (спроби рахуються на сервері)</li><li>Перший вхід і панель адміністратора</li></ul>' +
+      '<p class="small muted" style="margin:0">Після встановлення <b>один раз відкрийте курс з інтернетом</b> — він збереже уроки на пристрої. Оновлення курсу завантажуються автоматично, коли ви онлайн.</p></div></details>';
+  }
+  function bindInstall() {
+    var b = $('#instbtn'); if (!b) return;
+    b.onclick = function () { if (!installEvt) return; installEvt.prompt(); installEvt.userChoice.then(function () { installEvt = null; b.hidden = true; }); };
+  }
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function (e) { console.warn(e); }); });
+
   function start() {
     view = $('#view'); back = $('#back'); hmode = $('#hmode');
     applyTheme();

@@ -369,3 +369,22 @@ tr.muted td { color: var(--muted) }
 .cmp > div:not(.pro):not(.con) { background: var(--sunk) }
 .cmp p { margin: 0 }
 .cmp p b { display: inline; margin: 0 }
+
+/* install as an app */
+.install { margin-top: 14px; gap: 12px }
+.install summary { display: flex; align-items: center; gap: 12px; cursor: pointer; list-style: none }
+.install summary::-webkit-details-marker { display: none }
+.install summary > span:last-child { display: flex; flex-direction: column; gap: 2px; flex: 1 }
+.install summary::after { content: ""; width: 9px; height: 9px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin: -4px 4px 0 0; transition: transform .15s }
+.install[open] summary::after { transform: rotate(225deg); margin-top: 4px }
+.install .ii { width: 40px; height: 40px; border-radius: 12px; background: var(--hi-soft); display: grid; place-items: center; flex: none }
+.install .ii svg { width: 22px; height: 22px; fill: none; stroke: var(--hi-ink); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round }
+.install .ib { background: var(--sunk); border-radius: 12px; padding: 10px 14px; font-size: 14.5px }
+.install .ib h4 { margin: 4px 0 6px; font-size: 14px }
+.install .ib ol, .install .ib ul { margin: 0 0 8px; padding-left: 20px }
+.install .ib li { margin: 3px 0 }
+.install ul.ok li::marker { content: "✓  "; color: var(--ok) }
+.install ul.no li::marker { content: "•  "; color: var(--muted) }
+.install #instbtn { align-self: flex-start }
+.gallery figure:last-child:nth-child(odd) { grid-column: 1 / -1 }
+.gallery figure:last-child:nth-child(odd) img { aspect-ratio: 2 / 1 }

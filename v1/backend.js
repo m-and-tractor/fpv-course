@@ -43,9 +43,17 @@ var BACKEND = (function () {
   function loadMe() {
     return sb.rpc('me').then(function (r) {
       if (r.error) throw r.error;
-      B.me = r.data || {}; B.isAdmin = B.me.role === 'admin' || B.me.role === 'owner'; B.isOwner = B.me.role === 'owner'; B.status = B.me.status || (B.isAdmin ? 'active' : null);
+      setMe(r.data || {});
+      try { localStorage.setItem('vdc.me', JSON.stringify({ id: B.user.id, me: B.me })); } catch (e) {}
     });
   }
+  function setMe(me) { B.me = me; B.isAdmin = me.role === 'admin' || me.role === 'owner'; B.isOwner = me.role === 'owner'; B.status = me.status || (B.isAdmin ? 'active' : null); }
+  // offline: keep working as the last signed-in person on this device; progress syncs when the network returns
+  function offlineMe() {
+    try { var c = JSON.parse(localStorage.getItem('vdc.me') || 'null'); if (c && c.id && c.id === localStorage.getItem('vdc.owner')) { B.user = { id: c.id }; setMe(c.me || {}); B.offline = true; return true; } } catch (e) {}
+    return false;
+  }
+  function netErr(e) { return !navigator.onLine || /fetch|network|Failed|Load failed/i.test(String((e && (e.message || e.name)) || e)); }
   function mergeProgress() {
     return sb.from('progress').select('data').eq('user_id', B.user.id).maybeSingle().then(function (r) {
       var remote = (r.data && r.data.data) || null, local = A.getP(), owner = null;
@@ -80,18 +88,24 @@ var BACKEND = (function () {
   var pushT = null;
   B.push = function (P) { if (!B.user) return; clearTimeout(pushT); pushT = setTimeout(function () { pushNow(P); }, 1500); };
   function pushNow(P) {
-    if (!B.user) return Promise.resolve();
+    if (!B.user || B.offline) return Promise.resolve();
     return sb.from('progress').upsert({ user_id: B.user.id, data: P, updated_at: new Date().toISOString() }).then(function (r) { if (r.error) console.warn(r.error); });
   }
   window.addEventListener('pagehide', function () { if (pushT) { clearTimeout(pushT); pushNow(A.getP()); } });
+  window.addEventListener('online', function () {
+    if (!B.user) return;
+    if (B.offline) { B.offline = false; sb.auth.getSession().then(function (r) { if (r.data.session) { B.user = r.data.session.user; loadMe().then(mergeProgress).catch(function (e) { console.warn(e); }); } }); }
+    else pushNow(A.getP());
+  });
 
   B.init = function (api) {
     A = api;
+    if (!navigator.onLine && offlineMe()) return Promise.resolve();
     return sb.auth.getSession().then(function (r) {
       B.user = r.data.session ? r.data.session.user : null;
-      if (!B.user) return;
+      if (!B.user) { if (r.error && netErr(r.error)) offlineMe(); return; }
       return loadMe().then(mergeProgress);
-    }).catch(function (e) { console.warn(e); });
+    }).catch(function (e) { console.warn(e); if (netErr(e)) offlineMe(); });
   };
   function afterLogin() { return loadMe().then(mergeProgress).then(function () { location.hash = '#home'; A.route(); }); }
   B.logout = function () {
