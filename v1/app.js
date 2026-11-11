@@ -411,14 +411,14 @@ var APP = (function () {
     var th = S.theme || 'auto';
     view.innerHTML = '<h2 class="page">Налаштування</h2>' +
       '<div class="set"><h3>Тема</h3><div class="seg">' + [['auto', 'Як у системі'], ['light', 'Світла'], ['dark', 'Темна']].map(function (x) { return '<button type="button" data-th="' + x[0] + '" aria-pressed="' + (th === x[0]) + '">' + x[1] + '</button>'; }).join('') + '</div></div>' +
-      '<div class="set"><h3>Режим перевірки</h3><p class="small muted" style="margin:0">Відкриває всі уроки й тести без проходження попередніх. Для авторів курсу.</p><button class="tog" type="button" id="pv" aria-pressed="' + !!S.preview + '">' + (S.preview ? 'Увімкнено' : 'Вимкнено') + '</button></div>' +
-      '<div class="set"><h3>Скинути поступ</h3><p class="small muted" style="margin:0">Видалить результати на цьому пристрої (демо-режим).</p><button class="btn quiet" type="button" id="reset">Скинути</button></div>' +
+      (window.BACKEND && BACKEND.enabled ? '' : '<div class="set"><h3>Режим перевірки</h3><p class="small muted" style="margin:0">Відкриває всі уроки й тести без проходження попередніх. Для авторів курсу.</p><button class="tog" type="button" id="pv" aria-pressed="' + !!S.preview + '">' + (S.preview ? 'Увімкнено' : 'Вимкнено') + '</button></div>' +
+      '<div class="set"><h3>Скинути поступ</h3><p class="small muted" style="margin:0">Видалить результати на цьому пристрої (демо-режим).</p><button class="btn quiet" type="button" id="reset">Скинути</button></div>') +
       (window.BACKEND && BACKEND.enabled ? BACKEND.settingsHtml() : '') +
       '<p class="small muted" style="margin-top:18px">Версія ' + VERSION_LABEL + '.</p>';
     if (window.BACKEND && BACKEND.enabled) BACKEND.bindSettings();
     $$('[data-th]').forEach(function (b) { b.onclick = function () { S.theme = b.dataset.th; saveS(); applyTheme(); settings(); }; });
-    $('#pv').onclick = function () { S.preview = !S.preview; saveS(); settings(); };
-    $('#reset').onclick = function () { if (this.dataset.sure) { P = { les: {}, q: {}, tests: {} }; saveP(); toast('Поступ скинуто'); location.hash = '#home'; } else { this.dataset.sure = 1; this.textContent = 'Так, скинути'; } };
+    if ($('#pv')) $('#pv').onclick = function () { S.preview = !S.preview; saveS(); settings(); };
+    if ($('#reset')) $('#reset').onclick = function () { if (this.dataset.sure) { P = { les: {}, q: {}, tests: {} }; saveP(); toast('Поступ скинуто'); location.hash = '#home'; } else { this.dataset.sure = 1; this.textContent = 'Так, скинути'; } };
   }
   function applyTheme() { var t = S.theme; if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); else document.documentElement.removeAttribute('data-theme'); }
 
