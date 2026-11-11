@@ -60,7 +60,7 @@ var APP = (function () {
     if (before.kind === 'module') return !!tp(before.id).passed;
     return before.lessons.filter(avail).every(lessonDone);
   }
-  function testOpen(m) { return S.preview || window.COURSE_REVIEW || m.lessons.filter(avail).every(lessonDone); }
+  function testOpen(m) { var avl = m.lessons.filter(avail); if (!avl.length) return false; return S.preview || window.COURSE_REVIEW || avl.every(lessonDone); }
   function attemptsAllowed(m) { var t = tp(m.id); if (t.allowedSrv) return t.allowedSrv; return 1 + RETAKES_DEFAULT + (t.extra || 0); }
 
   // ---------- figures ----------
