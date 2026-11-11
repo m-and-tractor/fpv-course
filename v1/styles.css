@@ -366,3 +366,6 @@ tr.muted td { color: var(--muted) }
 .tview summary { cursor: pointer; font-size: 13.5px; color: var(--hi-ink); font-weight: 600 }
 .tview .tbl { margin-top: 8px }
 .ctip { position: fixed; z-index: 50; pointer-events: none; background: var(--ink); color: var(--surface); font: 500 13px/1.45 var(--sans); padding: 7px 10px; border-radius: 8px; white-space: pre-line; max-width: 260px; box-shadow: 0 4px 16px rgba(0,0,0,.18) }
+.cmp > div:not(.pro):not(.con) { background: var(--sunk) }
+.cmp p { margin: 0 }
+.cmp p b { display: inline; margin: 0 }

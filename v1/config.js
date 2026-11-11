@@ -6,5 +6,5 @@
 window.COURSE_SB_URL = 'https://vecyoytevyusfuitexjm.supabase.co';
 window.COURSE_SB_KEY = 'sb_publishable_ROrjuejpmX0CXcEa0LBGUg_Kai6i9j6';
 window.COURSE_VIDEO_BASE = 'https://pub-7dd876ed7c2e4b9ea10736f2080edefd.r2.dev/';
-window.COURSE_VIDEOS = ['intro-i02', 'm01-l01', 'm01-l02', 'm01-l03', 'm01-l04', 'm01-l05', 'm01-l06', 'm01-l07', 'm01-l08'];
+window.COURSE_VIDEOS = ['intro-i02', 'm01-l01', 'm01-l02', 'm01-l03', 'm01-l04', 'm01-l05', 'm01-l06', 'm01-l07', 'm01-l08', 'm01-l09', 'm01-l10', 'm01-l12'];
 window.COURSE_REVIEW = true;
