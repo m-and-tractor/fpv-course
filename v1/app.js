@@ -100,7 +100,7 @@ var APP = (function () {
       '<p>Кожен урок можна <b>дивитися</b> як відео або <b>читати</b> як текст із малюнками й анімаціями. Після уроку — питання для закріплення, наприкінці модуля — тест.</p>' +
       '<div class="pbar"><i style="width:' + (all.length ? Math.round(done / all.length * 100) : 0) + '%"></i></div>' +
       '<div class="stat"><div><b>' + done + ' / ' + all.length + '</b><span>уроків пройдено</span></div><div><b>' + mPassed + ' / ' + mods.length + '</b><span>' + plural(mods.length, 'модуль', 'модулі', 'модулів') + ' складено</span></div></div>' +
-      '</section>' + offlineLink();
+      '</section>' + (window.CERT ? CERT.homeCard() : '') + offlineLink();
     PARTS.forEach(function (p) {
       var avl = p.lessons.filter(avail), dn = avl.filter(lessonDone).length;
       html += '<section class="part"><div class="part-h"><h3>' + (p.kind === 'module' ? 'Модуль ' + p.n + '. ' : '') + esc(p.title) + '</h3><span>' + (p.lessons.length ? dn + ' / ' + p.lessons.length : '') + '</span></div><div class="lessons">';
@@ -431,10 +431,14 @@ var APP = (function () {
     var l = LES[parts[1]], m = PARTS.filter(function (x) { return x.id === parts[1]; })[0];
     if (window.BACKEND && BACKEND.enabled) {                       // accounts: join / login / admin screens and the login gate
       setTop(false, false);
+      if (parts[0] === 'verify' && window.CERT) return CERT.verifyView(parts.slice(1).join('-'));
       if (parts[0] === 'join') return BACKEND.joinView(parts.slice(1).join('-'));
       if (parts[0] === 'invite') return BACKEND.inviteView(parts.slice(1).join('-'));
-      if (!BACKEND.user) return BACKEND.loginView();
+      if (BACKEND.recovery && BACKEND.user) return BACKEND.newPassView();
+      if (!BACKEND.user) return parts[0] === 'forgot' ? BACKEND.forgotView() : BACKEND.loginView();
+      if (BACKEND.needsProfile()) return BACKEND.profileView();
       if (BACKEND.status !== 'active' && !BACKEND.isAdmin) return BACKEND.waitView();
+      if (parts[0] === 'cert' && window.CERT) { setTop(true, false); return CERT.view(); }
       if (parts[0] === 'admin' && BACKEND.isAdmin) { setTop(true, false); return BACKEND.adminView(parts.slice(1)); }
     }
     if (parts[0] === 'options') return settings();
@@ -510,5 +514,5 @@ var APP = (function () {
     modules: modules, lessons: function () { return LES; }, PASS_RATE: PASS_RATE, lessonDone: lessonDone,
     parts: function () { return PARTS; }, installSteps: installSteps, bindInstall: bindInstall
   };
-  return { part: part, start: start, ANIMS: ANIMS, photo: photo, gallery: gallery, anim: anim, img: img, esc: esc };
+  return { part: part, start: start, ANIMS: ANIMS, photo: photo, gallery: gallery, anim: anim, img: img, esc: esc, _api: api };
 })();

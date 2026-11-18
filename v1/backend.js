@@ -18,12 +18,27 @@ var BACKEND = (function () {
     bytes.forEach(function (b) { hex += ('0' + b.toString(16)).slice(-2); });
     return 'u' + hex + '@' + MAIL_DOMAIN;
   }
+  // login: e-mail; accounts made before e-mail login still sign in with their old nickname
+  function loginEmail(v) { v = String(v).trim(); return v.indexOf('@') > 0 ? v.toLowerCase() : emailOf(v); }
+  var NAME_RE = /^[A-Za-zА-Яа-яЇїІіЄєҐґ'’ʼ -]{1,40}$/, MAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  var NAME_FIELDS = [['ln', 'Прізвище', 'text', 'family-name'], ['fn', 'Ім’я', 'text', 'given-name'], ['mn', 'По батькові (якщо є)', 'text', 'additional-name', 1]];
+  function names() { return { last: val('ln'), first: val('fn'), middle: val('mn') }; }
+  function badName(n) {
+    if (!NAME_RE.test(n.last) || !NAME_RE.test(n.first) || (n.middle && !NAME_RE.test(n.middle))) return 'Вкажіть прізвище та ім’я українськими або латинськими літерами (по батькові — за наявності).';
+    return '';
+  }
+  B.who = function (p) { if (!p) return ''; var n = [p.last_name, p.first_name, p.middle_name].filter(Boolean).join(' '); return n || p.nickname || p.email || ''; };
   function err(e) {
     var m = (e && (e.message || e.error_description)) || String(e);
-    if (/invalid login|invalid_credentials/i.test(m)) return 'Невірний нікнейм або пароль.';
+    if (/invalid login|invalid_credentials/i.test(m)) return 'Невірна пошта або пароль.';
+    if (/email_taken|already registered|already been registered/i.test(m)) return 'Акаунт із такою поштою вже існує. Увійдіть або скористайтеся «Забули пароль?».';
+    if (/invalid_email|invalid.*email|email.*invalid/i.test(m)) return 'Перевірте адресу пошти.';
+    if (/invalid_name/.test(m)) return 'Перевірте прізвище та ім’я.';
+    if (/not authorized/i.test(m)) return 'Лист на цю адресу зараз не може бути надіслано (тестовий режим). Зверніться до адміністратора — він встановить новий пароль.';
+    if (/rate limit|too many/i.test(m)) return 'Забагато спроб. Спробуйте пізніше або зверніться до адміністратора.';
     if (/invite_invalid/.test(m)) return 'Посилання недійсне або термін його дії минув. Зверніться до адміністратора.';
     if (/already_member/.test(m)) return 'Цей акаунт уже в групі.';
-    if (/duplicate|unique|already registered/i.test(m)) return 'Такий нікнейм уже зайнятий.';
+
     if (/password/i.test(m)) return 'Пароль має містити щонайменше 6 символів.';
     if (/nickname/i.test(m)) return 'Нікнейм: 3–24 символи, літери, цифри, «_», «-», «.».';
     if (/fetch|network/i.test(m)) return 'Немає з’єднання з сервером. Перевірте інтернет.';
@@ -32,7 +47,7 @@ var BACKEND = (function () {
   function form(title, lede, fields, submit, extra) {
     return '<h2 class="page">' + title + '</h2>' + (lede ? '<p class="lede">' + lede + '</p>' : '') +
       '<form class="set" id="authf" novalidate>' + fields.map(function (f) {
-        return '<label class="fld"><span>' + f[1] + '</span><input id="' + f[0] + '" type="' + (f[2] || 'text') + '" autocomplete="' + (f[3] || 'off') + '" required></label>';
+        return '<label class="fld"><span>' + f[1] + '</span><input id="' + f[0] + '" type="' + (f[2] || 'text') + '" autocomplete="' + (f[3] || 'off') + '"' + (f[4] ? '' : ' required') + (f[5] != null ? ' value="' + esc(f[5]) + '"' : '') + (f[6] ? ' disabled' : '') + '></label>';
       }).join('') + '<p class="ferr" id="ferr" role="alert"></p><button class="btn wide" type="submit">' + submit + '</button>' + (extra || '') + '</form>';
   }
   function val(id) { var e = $('#' + id); return e ? e.value.trim() : ''; }
@@ -98,6 +113,9 @@ var BACKEND = (function () {
     else pushNow(A.getP());
   });
 
+  // a password-reset link from the e-mail opens the site with #...type=recovery; supabase-js signs in and fires PASSWORD_RECOVERY
+  if (/type=recovery/.test(location.hash)) B.recovery = true;
+  sb.auth.onAuthStateChange(function (ev) { if (ev === 'PASSWORD_RECOVERY') { B.recovery = true; if (A) { location.hash = '#newpass'; A.route(); } } });
   B.init = function (api) {
     A = api;
     if (!navigator.onLine && offlineMe()) return Promise.resolve();
@@ -105,7 +123,7 @@ var BACKEND = (function () {
       B.user = r.data.session ? r.data.session.user : null;
       if (!B.user) { if (r.error && netErr(r.error)) offlineMe(); return; }
       return loadMe().then(mergeProgress);
-    }).catch(function (e) { console.warn(e); if (netErr(e)) offlineMe(); });
+    }).then(function () { if (B.recovery) location.hash = '#newpass'; }).catch(function (e) { console.warn(e); if (netErr(e)) offlineMe(); });
   };
   function afterLogin() { return loadMe().then(mergeProgress).then(function () { location.hash = '#home'; A.route(); }); }
   B.logout = function () {
@@ -118,17 +136,62 @@ var BACKEND = (function () {
 
   // ---------- screens ----------
   B.loginView = function () {
-    view().innerHTML = form('Вхід до курсу', 'Увійдіть під нікнеймом і паролем, які ви створили за посиланням групи.',
-      [['nick', 'Нікнейм', 'text', 'username'], ['pass', 'Пароль', 'password', 'current-password']], 'Увійти',
-      '<p class="small muted" style="margin:6px 0 0">Немає акаунта? Відкрийте посилання для приєднання, яке надав адміністратор групи.</p>' +
-      '<p class="small muted" style="margin:4px 0 0">Забули пароль? Зверніться до адміністратора групи: він встановить новий.</p>');
+    view().innerHTML = form('Вхід до курсу', 'Увійдіть за поштою і паролем, які ви вказали під час реєстрації за посиланням групи.',
+      [['mail', 'Пошта', 'email', 'username'], ['pass', 'Пароль', 'password', 'current-password']], 'Увійти',
+      '<p class="small" style="margin:8px 0 0"><a href="#forgot">Забули пароль?</a></p>' +
+      '<p class="small muted" style="margin:4px 0 0">Немає акаунта? Відкрийте посилання для приєднання, яке надав адміністратор групи.</p>');
     $('#authf').onsubmit = function (e) {
-      e.preventDefault(); var nick = val('nick'), pass = $('#pass').value;
-      if (!nick || !pass) return showErr('Заповніть обидва поля.');
+      e.preventDefault(); var id = val('mail'), pass = $('#pass').value;
+      if (!id || !pass) return showErr('Заповніть обидва поля.');
       busy(true); showErr('');
-      sb.auth.signInWithPassword({ email: emailOf(nick), password: pass }).then(function (r) {
+      sb.auth.signInWithPassword({ email: loginEmail(id), password: pass }).then(function (r) {
         if (r.error) throw r.error; B.user = r.data.user; return afterLogin();
       }).catch(function (x) { busy(false); showErr(err(x)); });
+    };
+  };
+  B.forgotView = function () {
+    view().innerHTML = form('Відновлення пароля', 'Вкажіть пошту акаунта — ми надішлемо посилання для встановлення нового пароля.',
+      [['mail', 'Пошта', 'email', 'username']], 'Надіслати посилання',
+      '<p class="small muted" style="margin:6px 0 0">Лист не прийшов за кілька хвилин? Перевірте «Спам» або зверніться до адміністратора групи — він може встановити новий пароль.</p>' +
+      '<p class="small" style="margin:4px 0 0"><a href="#home">Повернутися до входу</a></p>');
+    $('#authf').onsubmit = function (e) {
+      e.preventDefault(); var m = val('mail').toLowerCase();
+      if (!MAIL_RE.test(m)) return showErr('Перевірте адресу пошти.');
+      busy(true); showErr('');
+      sb.auth.resetPasswordForEmail(m, { redirectTo: location.origin + location.pathname }).then(function (r) {
+        if (r.error) throw r.error;
+        view().innerHTML = '<h2 class="page">Перевірте пошту</h2><p class="lede">Якщо акаунт із адресою <b>' + esc(m) + '</b> існує, ми надіслали лист із посиланням. Відкрийте його на цьому пристрої.</p><a class="btn quiet" href="#home">До входу</a>';
+      }).catch(function (x) { busy(false); showErr(err(x)); });
+    };
+  };
+  B.newPassView = function () {
+    view().innerHTML = form('Новий пароль', 'Придумайте новий пароль для входу до курсу.',
+      [['pass', 'Новий пароль (щонайменше 6 символів)', 'password', 'new-password'], ['pass2', 'Повторіть пароль', 'password', 'new-password']], 'Зберегти пароль');
+    $('#authf').onsubmit = function (e) {
+      e.preventDefault(); var p1 = $('#pass').value, p2 = $('#pass2').value;
+      if (p1.length < 6) return showErr('Пароль має містити щонайменше 6 символів.'); if (p1 !== p2) return showErr('Паролі не збігаються.');
+      busy(true); showErr('');
+      sb.auth.updateUser({ password: p1 }).then(function (r) {
+        if (r.error) throw r.error; B.recovery = false; A.toast('Пароль змінено'); B.user = r.data.user; return afterLogin();
+      }).catch(function (x) { busy(false); showErr(err(x)); });
+    };
+  };
+  // accounts made before e-mail login: once, add full name and a real e-mail
+  B.needsProfile = function () { return !!(B.user && B.me && !B.offline && (!B.me.last_name || B.me.technical_email)); };
+  B.profileView = function () {
+    var me = B.me || {}, hasName = !!me.last_name;
+    view().innerHTML = form('Доповніть профіль', 'Тепер до курсу входять за поштою, а в сертифікат вписується ваше ПІБ. Заповніть це один раз.' + (hasName ? '' : ' Пишіть так, як має бути в сертифікаті: змінити ПІБ потім зможе лише адміністратор.'),
+      NAME_FIELDS.map(function (f) { var v = { ln: me.last_name, fn: me.first_name, mn: me.middle_name }[f[0]]; return [f[0], f[1], f[2], f[3], f[4] || 0, v || '', hasName]; })
+        .concat(me.technical_email ? [['mail', 'Пошта (для входу і відновлення пароля)', 'email', 'email']] : []), 'Зберегти');
+    $('#authf').onsubmit = function (e) {
+      e.preventDefault(); var n = names(), m = me.technical_email ? val('mail').toLowerCase() : null;
+      if (!hasName) { var bad = badName(n); if (bad) return showErr(bad); }
+      if (me.technical_email && !MAIL_RE.test(m)) return showErr('Перевірте адресу пошти.');
+      busy(true); showErr('');
+      sb.rpc('complete_profile', { p_last: n.last, p_first: n.first, p_middle: n.middle, p_email: m }).then(function (r) {
+        if (r.error) throw r.error; return loadMe();
+      }).then(function () { A.toast(me.technical_email ? 'Збережено. Далі входьте за поштою ' + m : 'Збережено'); location.hash = '#home'; A.route(); })
+        .catch(function (x) { busy(false); showErr(err(x)); });
     };
   };
 
@@ -140,24 +203,18 @@ var BACKEND = (function () {
       if (B.user && B.status) { view().innerHTML = '<h2 class="page">Ви вже в групі</h2><p class="lede">Ваш акаунт уже приєднано до групи «' + esc(B.me.group) + '».</p><a class="btn" href="#home">До курсу</a>'; return; }
       var full = g.taken >= g.seats;
       view().innerHTML = form('Приєднання до групи «' + esc(g.name) + '»',
-        full ? 'Усі місця в групі зайняті. Ви можете створити акаунт — адміністратор отримає запит і, якщо погодить, додасть вас до групи.' : 'Вільних місць: ' + (g.seats - g.taken) + ' з ' + g.seats + '. Придумайте нікнейм і пароль — за ними ви входитимете до курсу.',
-        [['nick', 'Нікнейм (3–24 символи)', 'text', 'username'], ['pass', 'Пароль (щонайменше 6 символів)', 'password', 'new-password'], ['pass2', 'Повторіть пароль', 'password', 'new-password']],
+        full ? 'Усі місця в групі зайняті. Ви можете створити акаунт — адміністратор отримає запит і, якщо погодить, додасть вас до групи.' : 'Вільних місць: ' + (g.seats - g.taken) + ' з ' + g.seats + '. Вкажіть ПІБ так, як має бути в сертифікаті, пошту і пароль для входу.',
+        NAME_FIELDS.concat([['mail', 'Пошта', 'email', 'email'], ['pass', 'Пароль (щонайменше 6 символів)', 'password', 'new-password'], ['pass2', 'Повторіть пароль', 'password', 'new-password']]),
         full ? 'Надіслати запит' : 'Створити акаунт',
-        '<p class="small muted" style="margin:6px 0 0">Пошта не потрібна. Запам’ятайте нікнейм і пароль.</p>');
+        '<p class="small muted" style="margin:6px 0 0">Вже маєте акаунт? Вкажіть ту саму пошту і пароль — вас додасть до групи.</p>');
       $('#authf').onsubmit = function (e) {
-        e.preventDefault(); var nick = val('nick'), pass = $('#pass').value, pass2 = $('#pass2').value;
-        if (!/^[A-Za-zА-Яа-яЇїІіЄєҐґ0-9_.-]{3,24}$/.test(nick)) return showErr('Нікнейм: 3–24 символи, літери, цифри, «_», «-», «.».');
+        e.preventDefault(); var n = names(), m = val('mail').toLowerCase(), pass = $('#pass').value, pass2 = $('#pass2').value;
+        var bad = badName(n); if (bad) return showErr(bad);
+        if (!MAIL_RE.test(m)) return showErr('Перевірте адресу пошти.');
         if (pass.length < 6) return showErr('Пароль має містити щонайменше 6 символів.');
         if (pass !== pass2) return showErr('Паролі не збігаються.');
         busy(true); showErr('');
-        sb.rpc('nickname_taken', { p_nickname: nick }).then(function (t) {
-          if (t.error) throw t.error; if (t.data) throw new Error('duplicate');
-          return sb.auth.signUp({ email: emailOf(nick), password: pass, options: { data: { nickname: nick } } });
-        }).then(function (s) {
-          if (s.error) throw s.error;
-          if (!s.data.session) return sb.auth.signInWithPassword({ email: emailOf(nick), password: pass }).then(function (x) { if (x.error) throw x.error; return x.data; });
-          return s.data;
-        }).then(function (d) {
+        signUpOrIn(m, pass, n).then(function (d) {
           B.user = d.user; return sb.rpc('join_group', { p_code: code });
         }).then(function (j) {
           if (j.error) throw j.error; return afterLogin();
@@ -165,6 +222,16 @@ var BACKEND = (function () {
       };
     });
   };
+  // new e-mail → create the account; e-mail already registered → sign in with the given password
+  function signUpOrIn(m, pass, n) {
+    var signIn = function () { return sb.auth.signInWithPassword({ email: m, password: pass }).then(function (x) { if (x.error) throw new Error('email_taken'); return x.data; }); };
+    return sb.rpc('email_taken', { p_email: m }).then(function (t) {
+      if (t.error) throw t.error; if (t.data) return signIn();
+      return sb.auth.signUp({ email: m, password: pass, options: { data: { last_name: n.last, first_name: n.first, middle_name: n.middle } } }).then(function (s) {
+        if (s.error) throw s.error; return s.data.session ? s.data : signIn();
+      });
+    });
+  }
 
   B.inviteView = function (code) {
     view().innerHTML = '<p class="muted">Перевіряємо посилання…</p>';
@@ -172,22 +239,16 @@ var BACKEND = (function () {
       var i = r.data;
       if (r.error || !i || !i.open) { view().innerHTML = '<h2 class="page">Посилання недійсне</h2><p class="lede">Це запрошення вже використане або термін його дії минув. Попросіть нове.</p><a class="btn quiet" href="#home">До входу</a>'; return; }
       var title = i.role === 'owner' ? 'Акаунт головного адміністратора' : 'Запрошення адміністратора';
-      view().innerHTML = form(title, 'Придумайте нікнейм і пароль для входу. Пошта не потрібна. Посилання одноразове.',
-        [['nick', 'Нікнейм (3–24 символи)', 'text', 'username'], ['pass', 'Пароль (щонайменше 6 символів)', 'password', 'new-password'], ['pass2', 'Повторіть пароль', 'password', 'new-password']], 'Створити акаунт');
+      view().innerHTML = form(title, 'Вкажіть ПІБ, пошту і пароль для входу. Посилання одноразове.',
+        NAME_FIELDS.concat([['mail', 'Пошта', 'email', 'email'], ['pass', 'Пароль (щонайменше 6 символів)', 'password', 'new-password'], ['pass2', 'Повторіть пароль', 'password', 'new-password']]), 'Створити акаунт');
       $('#authf').onsubmit = function (e) {
-        e.preventDefault(); var nick = val('nick'), pass = $('#pass').value, pass2 = $('#pass2').value;
-        if (!/^[A-Za-zА-Яа-яЇїІіЄєҐґ0-9_.-]{3,24}$/.test(nick)) return showErr('Нікнейм: 3–24 символи, літери, цифри, «_», «-», «.».');
+        e.preventDefault(); var n = names(), m = val('mail').toLowerCase(), pass = $('#pass').value, pass2 = $('#pass2').value;
+        var bad = badName(n); if (bad) return showErr(bad);
+        if (!MAIL_RE.test(m)) return showErr('Перевірте адресу пошти.');
         if (pass.length < 6) return showErr('Пароль має містити щонайменше 6 символів.');
         if (pass !== pass2) return showErr('Паролі не збігаються.');
         busy(true); showErr('');
-        sb.rpc('nickname_taken', { p_nickname: nick }).then(function (t) {
-          if (t.error) throw t.error; if (t.data) throw new Error('duplicate');
-          return sb.auth.signUp({ email: emailOf(nick), password: pass, options: { data: { nickname: nick } } });
-        }).then(function (s) {
-          if (s.error) throw s.error;
-          if (!s.data.session) return sb.auth.signInWithPassword({ email: emailOf(nick), password: pass }).then(function (x) { if (x.error) throw x.error; return x.data; });
-          return s.data;
-        }).then(function (d) { B.user = d.user; return sb.rpc('claim_admin_invite', { p_code: code }); })
+        signUpOrIn(m, pass, n).then(function (d) { B.user = d.user; return sb.rpc('claim_admin_invite', { p_code: code }); })
           .then(function (c) { if (c.error) throw c.error; return loadMe().then(mergeProgress); })
           .then(function () { location.hash = '#admin'; A.route(); })
           .catch(function (x) { busy(false); showErr(err(x)); });
@@ -205,8 +266,9 @@ var BACKEND = (function () {
   };
 
   B.settingsHtml = function () {
-    return '<div class="set"><h3>Акаунт</h3><p style="margin:0"><b>' + esc(B.me && B.me.nickname) + '</b>' + (B.me && B.me.group ? ' · група «' + esc(B.me.group) + '»' : '') + (B.isAdmin ? ' · адміністратор' : '') + '</p>' +
-      '<p class="small muted" style="margin:0">Поступ зберігається на сервері: можна продовжити з будь-якого пристрою.</p>' +
+    return '<div class="set"><h3>Акаунт</h3><p style="margin:0"><b>' + esc(B.who(B.me)) + '</b>' + (B.me && B.me.email && !B.me.technical_email ? ' · ' + esc(B.me.email) : '') + (B.me && B.me.group ? ' · група «' + esc(B.me.group) + '»' : '') + (B.isAdmin ? ' · адміністратор' : '') + '</p>' +
+      '<p class="small muted" style="margin:0">Поступ зберігається на сервері: можна продовжити з будь-якого пристрою. Виправити ПІБ може адміністратор.</p>' +
+      (B.me && B.me.certificate ? '<p style="margin:0"><a href="#cert">Мій сертифікат</a></p>' : '') +
       '<div class="row">' + (B.isAdmin ? '<a class="btn" href="#admin">Панель адміністратора</a>' : '') + '<button class="btn quiet" type="button" id="lo">Вийти</button></div></div>' +
       '<form class="set" id="cpw" novalidate><h3>Змінити пароль</h3><label class="fld"><span>Новий пароль (щонайменше 6 символів)</span><input id="cp1" type="password" autocomplete="new-password"></label>' +
       '<label class="fld"><span>Повторіть пароль</span><input id="cp2" type="password" autocomplete="new-password"></label><p class="ferr" id="ferr"></p><button class="btn quiet" type="submit">Зберегти пароль</button></form>';
@@ -261,11 +323,11 @@ var BACKEND = (function () {
     Promise.all([
       sb.from('groups').select('*').order('created_at', { ascending: false }),
       sb.from('memberships').select('user_id,group_id,status,created_at'),
-      sb.from('profiles').select('id,nickname'),
+      sb.from('profiles').select('id,nickname,email,last_name,first_name,middle_name'),
       sb.from('test_grants').select('*').not('requested_at', 'is', null)
     ]).then(function (r) {
       var groups = r[0].data || [], mem = r[1].data || [], prof = {}, reqs = r[3].data || [];
-      (r[2].data || []).forEach(function (p) { prof[p.id] = p.nickname; });
+      (r[2].data || []).forEach(function (p) { prof[p.id] = B.who(p); });
       var gname = {}; groups.forEach(function (g) { gname[g.id] = g.name; });
       var pend = mem.filter(function (m) { return m.status === 'pending'; });
       var html = '<h2 class="page">Панель адміністратора</h2>' +
@@ -296,13 +358,13 @@ var BACKEND = (function () {
   };
   function adminsBlock() {
     Promise.all([
-      sb.from('profiles').select('id,nickname,role,created_at').in('role', ['admin', 'owner']).order('created_at'),
+      sb.from('profiles').select('id,nickname,email,last_name,first_name,middle_name,role,created_at').in('role', ['admin', 'owner']).order('created_at'),
       sb.from('admin_invites').select('*').is('used_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false })
     ]).then(function (r) {
       var box = $('#admins'); if (!box) return;
       var inv = r[1].data || [];
       box.innerHTML = '<h3>Адміністратори</h3>' + (r[0].data || []).map(function (p) {
-        return '<div class="arow"><span><b>' + esc(p.nickname) + '</b> <span class="chip ' + (p.role === 'owner' ? 'go' : 'new') + '">' + (p.role === 'owner' ? 'головний' : 'адміністратор') + '</span></span>' + (p.role === 'admin' ? '<button class="btn quiet" data-unadmin="' + p.id + '">Забрати права</button>' : '') + '</div>';
+        return '<div class="arow"><span><b>' + esc(B.who(p)) + '</b> <span class="chip ' + (p.role === 'owner' ? 'go' : 'new') + '">' + (p.role === 'owner' ? 'головний' : 'адміністратор') + '</span></span>' + (p.role === 'admin' ? '<button class="btn quiet" data-unadmin="' + p.id + '">Забрати права</button>' : '') + '</div>';
       }).join('') +
         (inv.length ? '<p class="small muted" style="margin:6px 0 0">Невикористані запрошення (діють 14 днів, одноразові):</p>' + inv.map(function (i) {
           var link = location.origin + location.pathname + '#invite-' + i.code;
@@ -341,6 +403,12 @@ var BACKEND = (function () {
     };
   }
 
+  function certCell(c) {
+    if (!c) return '—';
+    var link = location.origin + location.pathname + '#verify-' + c.code;
+    return c.revoked_at ? '<s>' + esc(c.code) + '</s> <span class="chip bad">анульовано</span>' :
+      '<a href="' + esc(link) + '" target="_blank" rel="noopener">' + esc(c.code) + '</a><br>' + fmtDate(c.issued_at) + ' <button class="tog" data-revoke-cert="' + esc(c.code) + '">Анулювати</button>';
+  }
   function groupView(gid) {
     view().innerHTML = '<p class="muted">Завантаження…</p>';
     Promise.all([
@@ -351,12 +419,14 @@ var BACKEND = (function () {
       if (!g) { view().innerHTML = '<p>Групу не знайдено.</p><a class="btn quiet" href="#admin">Назад</a>'; return; }
       if (!ids.length) { view().innerHTML = '<div class="crumbs"><a href="#admin">Панель</a></div><h2 class="page">' + esc(g.name) + '</h2><p class="muted">У групі ще немає учнів. Надішліть їм посилання:</p><div class="mail">' + esc(joinLink(g.invite_code)) + '</div>'; return; }
       return Promise.all([
-        sb.from('profiles').select('id,nickname,last_seen').in('id', ids),
+        sb.from('profiles').select('id,nickname,email,last_name,first_name,middle_name,last_seen').in('id', ids),
         sb.from('progress').select('user_id,data,updated_at').in('user_id', ids),
         sb.from('test_attempts').select('user_id,module_id,score,total,passed,started_at').in('user_id', ids),
-        sb.from('test_grants').select('*').in('user_id', ids)
+        sb.from('test_grants').select('*').in('user_id', ids),
+        sb.from('certificates').select('user_id,code,issued_at,revoked_at').in('user_id', ids).order('issued_at')
       ]).then(function (x) {
-        var prof = {}, prog = {}, att = {}, gr = {};
+        var prof = {}, prog = {}, att = {}, gr = {}, cert = {};
+        (x[4].data || []).forEach(function (c) { if (!cert[c.user_id] || !c.revoked_at) cert[c.user_id] = c; });
         (x[0].data || []).forEach(function (p) { prof[p.id] = p; });
         (x[1].data || []).forEach(function (p) { prog[p.user_id] = p; });
         (x[2].data || []).forEach(function (a) { (att[a.user_id] = att[a.user_id] || []).push(a); });
@@ -364,7 +434,7 @@ var BACKEND = (function () {
         var mods = A.modules(), rows = mem.map(function (m) {
           var s = stats((prog[m.user_id] || {}).data || {}, att[m.user_id]);
           return { m: m, p: prof[m.user_id] || {}, s: s, upd: (prog[m.user_id] || {}).updated_at };
-        }).sort(function (a, b) { return (a.p.nickname || '').localeCompare(b.p.nickname || ''); });
+        }).sort(function (a, b) { return B.who(a.p).localeCompare(B.who(b.p), 'uk'); });
         var active = rows.filter(function (r) { return r.m.status === 'active'; });
         var avgDone = active.length ? Math.round(active.reduce(function (a, r) { return a + r.s.done / (r.s.total || 1); }, 0) / active.length * 100) : 0;
         var passed = {}; mods.forEach(function (md) { passed[md.id] = active.filter(function (r) { return r.s.mods[md.id] && r.s.mods[md.id].passed; }).length; });
@@ -372,7 +442,7 @@ var BACKEND = (function () {
           '<div class="tools"><div><b>' + active.length + ' / ' + g.seats + '</b><span>учнів у групі</span></div><div><b>' + avgDone + '%</b><span>середній поступ уроків</span></div>' +
           mods.map(function (md) { return '<div><b>' + passed[md.id] + ' / ' + active.length + '</b><span>склали тест модуля ' + md.n + '</span></div>'; }).join('') + '</div>' +
           '<div class="row"><a class="btn quiet" href="#admin-stats-' + g.id + '">Статистика групи</a><button class="btn quiet" type="button" id="csv">Завантажити CSV</button><button class="btn quiet" data-copy="' + esc(joinLink(g.invite_code)) + '">Копіювати посилання</button></div>' +
-          '<div class="tblwrap" style="margin-top:12px"><table class="tbl"><thead><tr><th>Нікнейм</th><th>Уроки</th><th>Питання</th>' + mods.map(function (md) { return '<th>Тест М' + md.n + '</th>'; }).join('') + '<th>Активність</th><th></th></tr></thead><tbody>' +
+          '<div class="tblwrap" style="margin-top:12px"><table class="tbl wide"><thead><tr><th>Курсант</th><th>Уроки</th><th>Питання</th>' + mods.map(function (md) { return '<th>Тест М' + md.n + '</th>'; }).join('') + '<th>Сертифікат</th><th>Активність</th><th></th></tr></thead><tbody>' +
           rows.map(function (r) {
             var cells = mods.map(function (md) {
               var t = r.s.mods[md.id], used = t ? t.used : 0, allowed = 1 + g.retakes + ((gr[r.m.user_id + '|' + md.id] || {}).extra || 0), req = (gr[r.m.user_id + '|' + md.id] || {}).requested_at;
@@ -380,12 +450,32 @@ var BACKEND = (function () {
               var flag = !t || !t.passed ? (used >= allowed ? ' <span class="chip bad">спроби вичерпано</span>' : '') : ' <span class="chip ok">складено</span>';
               return '<td style="white-space:normal">' + txt + ' <span class="muted small">(' + used + '/' + allowed + ')</span>' + flag + (req || (t && !t.passed && used >= allowed) ? ' <button class="tog" data-grant="' + r.m.user_id + '|' + md.id + '">+1 спроба</button>' : '') + '</td>';
             }).join('');
-            return '<tr' + (r.m.status !== 'active' ? ' class="muted"' : '') + '><td>' + esc(r.p.nickname) + (r.m.status !== 'active' ? ' <span class="chip lock">' + (r.m.status === 'pending' ? 'очікує' : 'відхилено') + '</span>' : '') + '</td>' +
+            return '<tr' + (r.m.status !== 'active' ? ' class="muted"' : '') + '><td style="white-space:normal">' + esc(B.who(r.p)) + (r.p.email && !/@learners\.victory-drones\.com$/.test(r.p.email) ? '<br><span class="small muted">' + esc(r.p.email) + '</span>' : '') + (r.m.status !== 'active' ? ' <span class="chip lock">' + (r.m.status === 'pending' ? 'очікує' : 'відхилено') + '</span>' : '') + '</td>' +
               '<td>' + r.s.done + ' / ' + r.s.total + '</td><td>' + (r.s.quiz != null ? r.s.quiz + '%' : '—') + '</td>' + cells +
-              '<td class="small">' + fmtDate(r.upd) + '</td><td><button class="tog" data-pw="' + r.m.user_id + '|' + esc(r.p.nickname) + '">Новий пароль</button></td></tr>';
+              '<td class="small" style="white-space:normal">' + certCell(cert[r.m.user_id]) + '</td>' +
+              '<td class="small">' + fmtDate(r.upd) + '</td><td><button class="tog" data-pw="' + r.m.user_id + '|' + esc(B.who(r.p)) + '">Новий пароль</button> <button class="tog" data-nm="' + r.m.user_id + '">Змінити ПІБ</button></td></tr>';
           }).join('') + '</tbody></table></div><div id="pwbox"></div>';
         view().innerHTML = html;
         bindAdmin();
+        view().querySelectorAll('[data-revoke-cert]').forEach(function (b) {
+          b.onclick = function () {
+            if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = 'Так, анулювати'; return; }
+            sb.rpc('admin_revoke_certificate', { p_code: b.dataset.revokeCert }).then(function (r) { A.toast(r.error ? err(r.error) : 'Сертифікат анульовано'); A.route(); });
+          };
+        });
+        view().querySelectorAll('[data-nm]').forEach(function (b) {
+          b.onclick = function () {
+            var p = prof[b.dataset.nm] || {}, box = $('#pwbox');
+            box.innerHTML = '<form class="set" id="nmf"><h3>ПІБ курсанта</h3>' + NAME_FIELDS.map(function (f) { var v = { ln: p.last_name, fn: p.first_name, mn: p.middle_name }[f[0]] || ''; return '<label class="fld"><span>' + f[1] + '</span><input id="' + f[0] + '" value="' + esc(v) + '"></label>'; }).join('') +
+              '<p class="small muted" style="margin:0">Уже виданий сертифікат зберігає старе ім’я: щоб видати з новим, анулюйте його — курсант отримає новий.</p><p class="ferr" id="ferr"></p><div class="row"><button class="btn" type="submit">Зберегти</button><button class="btn quiet" type="button" id="nmc">Скасувати</button></div></form>';
+            box.scrollIntoView({ behavior: 'smooth' });
+            $('#nmc').onclick = function () { box.innerHTML = ''; };
+            $('#nmf').onsubmit = function (e) {
+              e.preventDefault(); var n = names(), bad = badName(n); if (bad) return showErr(bad);
+              sb.rpc('admin_set_name', { p_user: b.dataset.nm, p_last: n.last, p_first: n.first, p_middle: n.middle }).then(function (r) { if (r.error) return showErr(err(r.error)); A.toast('ПІБ збережено'); A.route(); });
+            };
+          };
+        });
         view().querySelectorAll('[data-pw]').forEach(function (b) {
           b.onclick = function () {
             var x = b.dataset.pw.split('|'), box = $('#pwbox');
@@ -399,11 +489,12 @@ var BACKEND = (function () {
           };
         });
         $('#csv').onclick = function () {
-          var head = ['Нікнейм', 'Статус', 'Уроків пройдено', 'Уроків усього', 'Питання, %'].concat(mods.map(function (md) { return 'Тест М' + md.n + ', %'; })).concat(mods.map(function (md) { return 'Спроб М' + md.n; })).concat(['Остання активність']);
+          var head = ['Прізвище', 'Ім’я', 'По батькові', 'Пошта', 'Статус', 'Уроків пройдено', 'Уроків усього', 'Питання, %'].concat(mods.map(function (md) { return 'Тест М' + md.n + ', %'; })).concat(mods.map(function (md) { return 'Спроб М' + md.n; })).concat(['Сертифікат', 'Остання активність']);
           var lines = [head].concat(rows.map(function (r) {
-            return [r.p.nickname, r.m.status, r.s.done, r.s.total, r.s.quiz == null ? '' : r.s.quiz]
+            var c = cert[r.m.user_id];
+            return [r.p.last_name || '', r.p.first_name || '', r.p.middle_name || '', /@learners\./.test(r.p.email || '') ? '' : (r.p.email || ''), r.m.status, r.s.done, r.s.total, r.s.quiz == null ? '' : r.s.quiz]
               .concat(mods.map(function (md) { var t = r.s.mods[md.id]; return t && t.best ? Math.round(t.best.score / t.best.total * 100) : ''; }))
-              .concat(mods.map(function (md) { var t = r.s.mods[md.id]; return t ? t.used : 0; })).concat([r.upd || '']);
+              .concat(mods.map(function (md) { var t = r.s.mods[md.id]; return t ? t.used : 0; })).concat([c && !c.revoked_at ? c.code : '', r.upd || '']);
           })).map(function (row) { return row.map(function (c) { c = String(c == null ? '' : c); return /[",;\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(';'); }).join('\r\n');
           var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + lines], { type: 'text/csv;charset=utf-8' })); a.download = g.name.replace(/[^\wА-Яа-яЇїІіЄєҐґ-]+/g, '_') + '.csv'; a.click();
         };
@@ -411,5 +502,6 @@ var BACKEND = (function () {
     });
   }
 
+  B.rpc = function (fn, args) { return sb.rpc(fn, args || {}); };
   return B;
 })();
